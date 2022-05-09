@@ -1,4 +1,5 @@
 import warnings
+import dask.array as da
 import numpy as np
 import scipy as sp
 from scipy.sparse.linalg import eigsh
@@ -78,10 +79,14 @@ def calc_group_sizes(groups):
 
 
 ### Matrix helpers for S-matrix computation
-def cov2corr(M):
+def cov2corr(M, use_dask=False):
     """ Rescales a p x p cov. matrix M to be a correlation matrix """
-    scale = np.sqrt(np.diag(M))
-    return M / np.outer(scale, scale)
+    if use_dask:
+        scale = da.sqrt(da.diag(M))
+        return M / da.outer(scale, scale)
+    else:
+        scale = np.sqrt(np.diag(M))
+        return M / np.outer(scale, scale)
 
 
 def chol2inv(X):
@@ -90,13 +95,17 @@ def chol2inv(X):
     return np.dot(triang.T, triang)
 
 
-def shift_until_PSD(M, tol):
+def shift_until_PSD(M, tol, use_dask=False):
     """ Add the identity until a p x p matrix M has eigenvalues of at least tol"""
     p = M.shape[0]
-    mineig = np.linalg.eigh(M)[0].min()
-    if mineig < tol:
-        M += (tol - mineig) * np.eye(p)
-
+    if use_dask:
+        mineig = da.apply_gufunc(np.linalg.eigh, '(m,m)->(m),(m,m)', M, allow_rechunk=True)[0].min()
+        if mineig < tol:
+            M += (tol - mineig) * da.eye(p)
+    else:
+        mineig = np.linalg.eigh(M)[0].min()
+        if mineig < tol:
+            M += (tol - mineig) * np.eye(p)
     return M
 
 

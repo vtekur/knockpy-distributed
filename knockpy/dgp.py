@@ -1,5 +1,6 @@
 """ A collection of functions for generating synthetic datasets."""
 import numpy as np
+import dask.array as da
 from scipy import stats
 
 # Utility functions
@@ -58,7 +59,7 @@ def DirichletCorr(p=100, temp=1, tol=1e-6):
     return V
 
 
-def AR1(p=30, a=1, b=1, tol=1e-3, max_corr=1, rho=None):
+def AR1(p=30, a=1, b=1, tol=1e-3, max_corr=1, rho=None, use_dask=False):
     """
     Generates `p`-dimensional correlation matrix for
     AR(1) Gaussian process, where successive correlations
@@ -66,28 +67,33 @@ def AR1(p=30, a=1, b=1, tol=1e-3, max_corr=1, rho=None):
     specified, then the process is stationary with correlation
     `rho`.
     """
-
-    # Generate rhos, take log to make multiplication easier
-    if rho is None:
-        rhos = np.log(np.minimum(
-            stats.beta.rvs(size=p, a=a, b=b), max_corr
-        ))
+    if use_dask:
+        rhos = da.log(da.from_array([rho for _ in range(p)]))
+        rhos[0] = 0
+        cumrhos = da.cumsum(rhos).reshape(p, 1)
+        log_corrs = -1 * da.absolute(cumrhos - cumrhos.transpose())
+        corr_matrix = da.exp(log_corrs)
     else:
-        if np.abs(rho) > 1:
-            raise ValueError(f"rho {rho} must be a correlation between -1 and 1")
-        rhos = np.log(np.array([rho for _ in range(p)]))
-    rhos[0] = 0
+        # Generate rhos, take log to make multiplication easier
+        if rho is None:
+            rhos = np.log(np.minimum(
+                stats.beta.rvs(size=p, a=a, b=b), max_corr
+            ))
+        else:
+            if np.abs(rho) > 1:
+                raise ValueError(f"rho {rho} must be a correlation between -1 and 1")
+            rhos = np.log(np.array([rho for _ in range(p)]))
+        rhos[0] = 0
 
-    # Log correlations between x_1 and x_i for each i
-    cumrhos = np.cumsum(rhos).reshape(p, 1)
+        # Log correlations between x_1 and x_i for each i
+        cumrhos = np.cumsum(rhos).reshape(p, 1)
 
-    # Use cumsum tricks to calculate all correlations
-    log_corrs = -1 * np.abs(cumrhos - cumrhos.transpose())
-    corr_matrix = np.exp(log_corrs)
+        # Use cumsum tricks to calculate all correlations
+        log_corrs = -1 * np.abs(cumrhos - cumrhos.transpose())
+        corr_matrix = np.exp(log_corrs)
 
     # Ensure PSD-ness
-    corr_matrix = cov2corr(shift_until_PSD(corr_matrix, tol))
-
+    corr_matrix = cov2corr(shift_until_PSD(corr_matrix, tol, use_dask), use_dask)
     return corr_matrix
 
 
