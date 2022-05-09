@@ -68,6 +68,11 @@ Given a data-matrix `X` and a response vector `y`, knockpy makes it easy to use 
 
 Most importantly, ``knockpy`` is built to be modular, so researchers and analysts can easily layer functionality on top of it.
 
+## Knockpy distributed
+
+To begin the scheduler, run `dask-schedular` in one terminal. It will return some address, ''Scheduler at: tcp://X''
+To run n workers at a time, run `sbatch --array=0-[n-1] run_worker.sh tcp://X`, inserting the address returned by dask-scheduler
+
 ## Reference
 
 If you use knockpy in an academic publication, please consider citing [Spector and Janson (2020)](https://arxiv.org/abs/2011.14625). The bibtex entry is below:
