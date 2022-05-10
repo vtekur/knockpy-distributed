@@ -125,49 +125,94 @@ class KnockoffSampler:
             )
 
 
-def produce_MX_gaussian_knockoffs(X, mu, invSigma, S, sample_tol, copies, verbose):
+def produce_MX_gaussian_knockoffs(X, mu, invSigma, S, sample_tol, copies, verbose, use_dask=False):
 
-    # Calculate MX knockoff moments...
-    n, p = X.shape
-    invSigma_S = np.dot(invSigma, S)
-    mu_k = X - np.dot(X - mu.reshape(1, -1), invSigma_S)  # This is a bottleneck??
-    Vk = 2 * S - np.dot(S, invSigma_S)
+    if use_dask:
+        # Calculate MX knockoff moments...
+        n, p = X.shape
+        invSigma_S = da.dot(invSigma, S)
+        mu_k = X - da.dot(X - mu.reshape(1, -1), invSigma_S)  # This is a bottleneck??
+        Vk = 2 * S - da.dot(S, invSigma_S)
 
-    # Account for numerical errors
-    min_eig = np.linalg.eigh(Vk)[0].min()
-    if min_eig < sample_tol and verbose:
-        warnings.warn(
-            f"Minimum eigenvalue of Vk is {min_eig}, under tolerance {sample_tol}"
+        # Account for numerical errors
+        min_eig = da.apply_gufunc(np.linalg.eigh, '(m,m)->(m),(m,m)', Vk)[0].min() # maybe allow_rechunk if needed
+        if min_eig < sample_tol and verbose:
+            warnings.warn(
+                f"Minimum eigenvalue of Vk is {min_eig}, under tolerance {sample_tol}"
+            )
+            Vk = shift_until_PSD(Vk, sample_tol, use_dask=use_dask)
+
+        # ...and sample MX knockoffs!
+        # TODO
+        knockoffs = stats.multivariate_normal.rvs(mean=np.zeros(p), cov=Vk, size=copies * n)
+
+        # Account for case when n * copies == 1
+        if n * copies == 1:
+            knockoffs = knockoffs.reshape(-1, 1)
+
+        # (Save this for testing later)
+        # first_row = knockoffs[0, 0:n].copy()
+
+        # Some annoying reshaping...
+        knockoffs = knockoffs.flatten(order="C")
+        knockoffs = knockoffs.T.reshape((p, n, copies)[::-1]).T
+        # knockoffs = knockoffs.reshape(p, n, copies, order="F")
+        knockoffs = da.transpose(knockoffs, [1, 0, 2])
+
+        # (Test we have reshaped correctly)
+        # new_first_row = knockoffs[0, 0:n, 0]
+        # np.testing.assert_array_almost_equal(
+        #     first_row,
+        #     new_first_row,
+        #     err_msg="Critical error - reshaping failed in knockoff generator",
+        # )
+
+        # Add mu
+        mu_k = da.expand_dims(mu_k, axis=2)
+        knockoffs = knockoffs + mu_k
+        return knockoffs
+    else:
+        # Calculate MX knockoff moments...
+        n, p = X.shape
+        invSigma_S = np.dot(invSigma, S)
+        mu_k = X - np.dot(X - mu.reshape(1, -1), invSigma_S)  # This is a bottleneck??
+        Vk = 2 * S - np.dot(S, invSigma_S)
+
+        # Account for numerical errors
+        min_eig = np.linalg.eigh(Vk)[0].min()
+        if min_eig < sample_tol and verbose:
+            warnings.warn(
+                f"Minimum eigenvalue of Vk is {min_eig}, under tolerance {sample_tol}"
+            )
+            Vk = shift_until_PSD(Vk, sample_tol)
+
+        # ...and sample MX knockoffs!
+        knockoffs = stats.multivariate_normal.rvs(mean=np.zeros(p), cov=Vk, size=copies * n)
+
+        # Account for case when n * copies == 1
+        if n * copies == 1:
+            knockoffs = knockoffs.reshape(-1, 1)
+
+        # (Save this for testing later)
+        first_row = knockoffs[0, 0:n].copy()
+
+        # Some annoying reshaping...
+        knockoffs = knockoffs.flatten(order="C")
+        knockoffs = knockoffs.reshape(p, n, copies, order="F")
+        knockoffs = np.transpose(knockoffs, [1, 0, 2])
+
+        # (Test we have reshaped correctly)
+        new_first_row = knockoffs[0, 0:n, 0]
+        np.testing.assert_array_almost_equal(
+            first_row,
+            new_first_row,
+            err_msg="Critical error - reshaping failed in knockoff generator",
         )
-        Vk = shift_until_PSD(Vk, sample_tol)
 
-    # ...and sample MX knockoffs!
-    knockoffs = stats.multivariate_normal.rvs(mean=np.zeros(p), cov=Vk, size=copies * n)
-
-    # Account for case when n * copies == 1
-    if n * copies == 1:
-        knockoffs = knockoffs.reshape(-1, 1)
-
-    # (Save this for testing later)
-    first_row = knockoffs[0, 0:n].copy()
-
-    # Some annoying reshaping...
-    knockoffs = knockoffs.flatten(order="C")
-    knockoffs = knockoffs.reshape(p, n, copies, order="F")
-    knockoffs = np.transpose(knockoffs, [1, 0, 2])
-
-    # (Test we have reshaped correctly)
-    new_first_row = knockoffs[0, 0:n, 0]
-    np.testing.assert_array_almost_equal(
-        first_row,
-        new_first_row,
-        err_msg="Critical error - reshaping failed in knockoff generator",
-    )
-
-    # Add mu
-    mu_k = np.expand_dims(mu_k, axis=2)
-    knockoffs = knockoffs + mu_k
-    return knockoffs
+        # Add mu
+        mu_k = np.expand_dims(mu_k, axis=2)
+        knockoffs = knockoffs + mu_k
+        return knockoffs
 
 
 class GaussianSampler(KnockoffSampler):
@@ -240,7 +285,6 @@ class GaussianSampler(KnockoffSampler):
         S=None,
         method=None,
         verbose=False,
-        use_dask=False
         **kwargs,
     ):
 
@@ -271,7 +315,7 @@ class GaussianSampler(KnockoffSampler):
             if self.verbose:
                 print(f"Computing knockoff S matrix...")
             self.S = smatrix.compute_smatrix(
-                Sigma=self.Sigma, groups=self.groups, method=self.method, use_dask=use_dask, **self.kwargs
+                Sigma=self.Sigma, groups=self.groups, method=self.method, **self.kwargs
             )
 
     def fetch_S(self):
@@ -288,6 +332,7 @@ class GaussianSampler(KnockoffSampler):
             sample_tol=self.sample_tol,
             copies=1,
             verbose=self.verbose,
+            use_dask=use_dask
         )[:, :, 0]
         return self.Xk
 

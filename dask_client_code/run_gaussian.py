@@ -21,8 +21,10 @@ sn = da.random.standard_normal(size=(n, p))
 X = L.dot(sn.T)
 print(f"Data Sampling: {time()-start}")
 
+# TODO create random S matrix
+
 # sample knockoffs
-sampler = knockpy.knockoffs.GaussianSampler(X, Sigma, method='mvr', use_dask=True)
+sampler = knockpy.knockoffs.GaussianSampler(X, Sigma, method='mvr')
 sampler.sample_knockoffs(use_dask=True)
 
 

@@ -99,7 +99,7 @@ def shift_until_PSD(M, tol, use_dask=False):
     """ Add the identity until a p x p matrix M has eigenvalues of at least tol"""
     p = M.shape[0]
     if use_dask:
-        mineig = da.apply_gufunc(np.linalg.eigh, '(m,m)->(m),(m,m)', M, allow_rechunk=True)[0].min()
+        mineig = da.apply_gufunc(np.linalg.eigh, '(m,m)->(m),(m,m)', M)[0].min() # maybe add allow_rechunk
         if mineig < tol:
             M += (tol - mineig) * da.eye(p)
     else:
