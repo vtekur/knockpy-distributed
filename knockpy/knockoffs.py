@@ -143,12 +143,13 @@ def produce_MX_gaussian_knockoffs(X, mu, invSigma, S, sample_tol, copies, verbos
 
         # Account for numerical errors
         min_eig = da.apply_gufunc(np.linalg.eigh, '(m,m)->(m),(m,m)', Vk, allow_rechunk=True)[0].min() # maybe allow_rechunk if needed
+        print("Before Comparison")
         if min_eig < sample_tol and verbose:
             warnings.warn(
                 f"Minimum eigenvalue of Vk is {min_eig}, under tolerance {sample_tol}"
             )
             Vk = shift_until_PSD(Vk, sample_tol, use_dask=use_dask)
-
+        print("After Comparison")
         # ...and sample MX knockoffs!
         L = da.linalg.cholesky(Vk, lower=True)
         sn = da.random.standard_normal(size=(copies * n, p))
