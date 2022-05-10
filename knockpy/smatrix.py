@@ -186,6 +186,7 @@ def compute_smatrix(
     line_search=True,
     D=None,
     U=None,
+    use_dask=False,
     **kwargs,
 ):
     """

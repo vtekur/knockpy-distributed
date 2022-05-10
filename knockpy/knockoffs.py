@@ -240,6 +240,7 @@ class GaussianSampler(KnockoffSampler):
         S=None,
         method=None,
         verbose=False,
+        use_dask=False
         **kwargs,
     ):
 
@@ -270,13 +271,13 @@ class GaussianSampler(KnockoffSampler):
             if self.verbose:
                 print(f"Computing knockoff S matrix...")
             self.S = smatrix.compute_smatrix(
-                Sigma=self.Sigma, groups=self.groups, method=self.method, **self.kwargs
+                Sigma=self.Sigma, groups=self.groups, method=self.method, use_dask=use_dask, **self.kwargs
             )
 
     def fetch_S(self):
         return self.S
 
-    def sample_knockoffs(self):
+    def sample_knockoffs(self, use_dask=False):
         """ Samples knockoffs. returns n x p knockoff matrix."""
         self.check_PSD_condition(self.Sigma, self.S)
         self.Xk = produce_MX_gaussian_knockoffs(
