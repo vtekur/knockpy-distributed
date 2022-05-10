@@ -11,8 +11,8 @@ client = Client(processes=False,
 start = time()
 
 # Generate X Data
-n = 82000 # number of data points
-p = 82000 # number of features
+n = 50#82000 # number of data points
+p = 50#82000 # number of features
 A = da.random.standard_normal(size=(p, p))
 Sigma = A.dot(A.T)
 print(f"Sigma Generation: {time()-start}")
@@ -21,10 +21,11 @@ sn = da.random.standard_normal(size=(n, p))
 X = L.dot(sn.T)
 print(f"Data Sampling: {time()-start}")
 
-# TODO create random S matrix
+# Create random S matrix
+S = da.diag(da.random.random_sample((p,)) )
 
 # sample knockoffs
-sampler = knockpy.knockoffs.GaussianSampler(X, Sigma, method='mvr')
+sampler = knockpy.knockoffs.GaussianSampler(X, Sigma=Sigma, S=S)
 sampler.sample_knockoffs(use_dask=True)
 
 
