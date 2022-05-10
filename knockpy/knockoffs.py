@@ -54,10 +54,13 @@ class KnockoffSampler:
         if self.verbose:
             print(f"Minimum eigenvalue of S is {np.linalg.eigh(S)[0].min()}")
             print(f"Minimum eigenvalue of 2Sigma - S is {min_eig1}")
-        if min_eig1 < -1e-6:
-            raise np.linalg.LinAlgError(
-                f"Minimum eigenvalue of 2Sigma - S is {min_eig1}, meaning FDR control violations are extremely likely"
-            )
+        # if min_eig1 < -1e-6:
+        #     if use_dask:
+        #         raise ValueError(f"Minimum eigenvalue of 2Sigma - S is {min_eig1.compute()}, meaning FDR control violations are extremely likely")
+        #     else:
+        #         raise np.linalg.LinAlgError(
+        #             f"Minimum eigenvalue of 2Sigma - S is {min_eig1}, meaning FDR control violations are extremely likely"
+        #         )
 
     def many_ks_tests(self, sample1s, sample2s):
         """
@@ -139,7 +142,7 @@ def produce_MX_gaussian_knockoffs(X, mu, invSigma, S, sample_tol, copies, verbos
         Vk = 2 * S - da.dot(S, invSigma_S)
 
         # Account for numerical errors
-        min_eig = da.apply_gufunc(np.linalg.eigh, '(m,m)->(m),(m,m)', Vk)[0].min() # maybe allow_rechunk if needed
+        min_eig = da.apply_gufunc(np.linalg.eigh, '(m,m)->(m),(m,m)', Vk, allow_rechunk=True)[0].min() # maybe allow_rechunk if needed
         if min_eig < sample_tol and verbose:
             warnings.warn(
                 f"Minimum eigenvalue of Vk is {min_eig}, under tolerance {sample_tol}"
@@ -147,8 +150,9 @@ def produce_MX_gaussian_knockoffs(X, mu, invSigma, S, sample_tol, copies, verbos
             Vk = shift_until_PSD(Vk, sample_tol, use_dask=use_dask)
 
         # ...and sample MX knockoffs!
-        # TODO
-        knockoffs = stats.multivariate_normal.rvs(mean=np.zeros(p), cov=Vk, size=copies * n)
+        L = da.linalg.cholesky(Vk, lower=True)
+        sn = da.random.standard_normal(size=(copies * n, p))
+        knockoffs = L.dot(sn.T)
 
         # Account for case when n * copies == 1
         if n * copies == 1:
@@ -158,9 +162,10 @@ def produce_MX_gaussian_knockoffs(X, mu, invSigma, S, sample_tol, copies, verbos
         # first_row = knockoffs[0, 0:n].copy()
 
         # Some annoying reshaping...
-        knockoffs = knockoffs.flatten(order="C")
+        knockoffs = knockoffs.flatten()
+        print(knockoffs.shape)
+        print((p, n, copies)[::-1])
         knockoffs = knockoffs.T.reshape((p, n, copies)[::-1]).T
-        # knockoffs = knockoffs.reshape(p, n, copies, order="F")
         knockoffs = da.transpose(knockoffs, [1, 0, 2])
 
         # (Test we have reshaped correctly)
@@ -289,6 +294,7 @@ class GaussianSampler(KnockoffSampler):
         S=None,
         method=None,
         verbose=False,
+        use_dask=False,
         **kwargs,
     ):
 
@@ -303,7 +309,7 @@ class GaussianSampler(KnockoffSampler):
             Sigma, invSigma = utilities.estimate_covariance(X, tol=1e-2)
         self.Sigma = Sigma
         if invSigma is None:
-            invSigma = utilities.chol2inv(Sigma)
+            invSigma = utilities.chol2inv(Sigma, use_dask)
         self.invSigma = invSigma
         if groups is None:
             groups = np.arange(1, self.p + 1, 1)
@@ -327,7 +333,7 @@ class GaussianSampler(KnockoffSampler):
 
     def sample_knockoffs(self, use_dask=False):
         """ Samples knockoffs. returns n x p knockoff matrix."""
-        self.check_PSD_condition(self.Sigma, self.S, use_dask)
+        self.check_PSD_condition(self.Sigma, self.S, use_dask=use_dask)
         self.Xk = produce_MX_gaussian_knockoffs(
             X=self.X,
             mu=self.mu,

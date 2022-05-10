@@ -89,17 +89,21 @@ def cov2corr(M, use_dask=False):
         return M / np.outer(scale, scale)
 
 
-def chol2inv(X):
+def chol2inv(X, use_dask=False):
     """ Uses cholesky decomp to get inverse of matrix """
-    triang = np.linalg.inv(np.linalg.cholesky(X))
-    return np.dot(triang.T, triang)
+    if use_dask:
+        triang = da.linalg.inv(da.linalg.cholesky(X))
+        return da.dot(triang.T, triang)
+    else:
+        triang = np.linalg.inv(np.linalg.cholesky(X))
+        return np.dot(triang.T, triang)
 
 
 def shift_until_PSD(M, tol, use_dask=False):
     """ Add the identity until a p x p matrix M has eigenvalues of at least tol"""
     p = M.shape[0]
     if use_dask:
-        mineig = da.apply_gufunc(np.linalg.eigh, '(m,m)->(m),(m,m)', M)[0].min() # maybe add allow_rechunk
+        mineig = da.apply_gufunc(np.linalg.eigh, '(m,m)->(m),(m,m)', M, allow_rechunk=True)[0].min() # maybe add allow_rechunk
         if mineig < tol:
             M += (tol - mineig) * da.eye(p)
     else:
