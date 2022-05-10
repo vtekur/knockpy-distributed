@@ -1,4 +1,5 @@
 import warnings
+import dask.array as da
 import numpy as np
 import scipy as sp
 from scipy import stats
@@ -28,7 +29,7 @@ class KnockoffSampler:
 
         raise NotImplementedError
 
-    def check_PSD_condition(self, Sigma, S):
+    def check_PSD_condition(self, Sigma, S, use_dask=False):
         """ Checks that the feature-knockoff cov matrix is PSD.
 
         Parameters
@@ -46,7 +47,10 @@ class KnockoffSampler:
         """
 
         # Check PSD condition
-        min_eig1 = np.linalg.eigh(2 * Sigma - S)[0].min()
+        if use_dask:
+            min_eig1 = da.apply_gufunc(np.linalg.eigh, '(m,m)->(m),(m,m)', 2 * Sigma - S, allow_rechunk=True)[0].min()
+        else:
+            min_eig1 = np.linalg.eigh(2 * Sigma - S)[0].min()
         if self.verbose:
             print(f"Minimum eigenvalue of S is {np.linalg.eigh(S)[0].min()}")
             print(f"Minimum eigenvalue of 2Sigma - S is {min_eig1}")
@@ -279,7 +283,7 @@ class GaussianSampler(KnockoffSampler):
 
     def sample_knockoffs(self, use_dask=False):
         """ Samples knockoffs. returns n x p knockoff matrix."""
-        self.check_PSD_condition(self.Sigma, self.S)
+        self.check_PSD_condition(self.Sigma, self.S, use_dask)
         self.Xk = produce_MX_gaussian_knockoffs(
             X=self.X,
             mu=self.mu,
