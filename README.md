@@ -1,3 +1,9 @@
+# Experiment Scripts for 260r Project
+
+Scripts are in the dask_client_code folder, and some of these are batch scripts that are used to deploy sbatch jobs on the FAS RC cluster (by running the command `sbatch SCRIPT_NAME.sh`. single_node_search.sh was used for the Dask function performance experiments and run_gaussian_single.sh was used for the Gaussian Knockoff experiments.
+
+# Original documentation
+
 # Knockpy
 
 A python implementation of the knockoffs framework for variable selection. See https://amspector100.github.io/knockpy/ for detailed documentation and tutorials.
